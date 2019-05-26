@@ -1,6 +1,8 @@
 # async-mcrcon
 
 ## Description
+Implementation of Minecraft's [RCON protocol](https://wiki.vg/RCON) in Python.
+
 - `async_mcrcon.py` is a module you can import from your own python code to send commands to a minecraft server and read responses.
 - `async_mcrcon.py` is the async version of [mcrcon.py](https://github.com/barneygale/MCRcon/blob/master/mcrcon.py)
 
