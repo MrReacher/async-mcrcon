@@ -14,7 +14,6 @@ class MinecraftClient:
         self.port = port
         self.password = password
 
-        self._auth = None
         self._reader = None
         self._writer = None
 
@@ -28,11 +27,11 @@ class MinecraftClient:
     async def __aexit__(self, exc_type, exc, tb):
         if self._writer:
             self._writer.close()
+            self._reader = None
+            self._writer = None
 
     async def _authenticate(self):
-        if not self._auth:
-            await self._send(3, self.password)
-            self._auth = True
+        await self._send(3, self.password)
 
     async def _read_data(self, leng):
         data = b''
