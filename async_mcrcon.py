@@ -1,11 +1,12 @@
-import asyncio
+import collections
 import struct
+import asyncio
 
-class ClientError(Exception):
-    pass
+Packet = collections.namedtuple('Packet', ('ident', 'kind', 'payload'))
 
-class InvalidPassword(Exception):
-    pass
+class IncompletePacket(Exception):
+    def __init__(self, minimum):
+        self.minimum = minimum
 
 class MinecraftClient:
 
@@ -14,56 +15,77 @@ class MinecraftClient:
         self.port = port
         self.password = password
 
-        self._auth = None
-        self._reader = None
-        self._writer = None
+        self.auth = None
+        self.reader = None
+        self.writer = None
 
     async def __aenter__(self):
-        if not self._writer:
-            self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
-            await self._authenticate()
+        if not self.writer:
+            await self.login()
 
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        if self._writer:
-            self._writer.close()
+        if self.writer:
+            self.writer.close()
 
-    async def _authenticate(self):
-        if not self._auth:
-            await self._send(3, self.password)
-            self._auth = True
+    def close(self):
+        if self.writer:
+            self.writer.close()
 
-    async def _read_data(self, leng):
+    async def login(self):
+        if not self.auth:
+            self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+            self.send_packet(Packet(0, 3, self.password.encode('utf8')))
+            self.auth = True
+
+            packet = await self.read_data()
+            return packet.ident == 0
+
+    def decode_packet(self, data):
+        if len(data) < 14:
+            raise IncompletePacket(14)
+
+        length = struct.unpack('<i', data[:4])[0] + 4
+        if len(data) < length:
+            raise IncompletePacket(length)
+
+        ident, kind = struct.unpack('<ii', data[4:12])
+        payload, padding = data[12:length-2], data[length-2:length]
+        
+        assert padding == b'\x00\x00'
+        return Packet(ident, kind, payload), data[length:]
+
+    def encode_packet(self, packet):
+        data = struct.pack('<ii', packet.ident, packet.kind) + packet.payload + b'\x00\x00'
+        return struct.pack('<i', len(data)) + data
+
+    def send_packet(self, packet):
+        self.writer.write(self.encode_packet(packet))
+
+    async def read_data(self):
         data = b''
-        while len(data) < leng:
-            data += await self._reader.read(leng - len(data))
+        while True:
+            try:
+                output = self.decode_packet(data)[0]
+                return output
+            except IncompletePacket as exc:
+                while len(data) < exc.minimum:
+                    output = await self.reader.read(exc.minimum - len(data))
+                    data += output
 
-        return data
+    async def send(self, command):
+        cmd = command.encode('utf8')
 
-    async def _send(self, typen, message):
-        if not self._writer:
-            raise ClientError('Not connected.')
-
-        out = struct.pack('<li', 0, typen) + message.encode('utf8') + b'\x00\x00'
-        out_len = struct.pack('<i', len(out))
-        self._writer.write(out_len + out)
-
-        in_len = struct.unpack('<i', await self._read_data(4))
-        in_payload = await self._read_data(in_len[0])
-
-        in_id, in_type = struct.unpack('<ii', in_payload[:8])
-        in_data, in_padd = in_payload[8:-2], in_payload[-2:]
-
-        if in_padd != b'\x00\x00':
-            raise ClientError('Incorrect padding.')
-        if in_id == -1:
-            raise InvalidPassword('Incorrect password.')
-
-        data = in_data.decode('utf8')
-        return data
-
-    async def send(self, cmd):
-        result = await self._send(2, cmd)
-        await asyncio.sleep(0.003) #unsure about this
-        return result
+        self.send_packet(Packet(0, 2, cmd))
+        self.send_packet(Packet(1, 0, b''))
+        
+        response = b''
+        while True:
+            packet = await self.read_data()
+            if packet.ident != 0:
+                break
+            
+            response += packet.payload
+        
+        return response.decode('utf8')
