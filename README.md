@@ -10,6 +10,19 @@ Implementation of Minecraft's [RCON protocol](https://wiki.vg/RCON) in Python.
 ```py
 from async_mcrcon import MinecraftClient
 
+mc = MinecraftClient('1.3.3.7', 25575, 'password')
+await mc.login()
+
+output = await mc.send('help')
+print(output)
+
+mc.close()
+```
+
+Within a Context Manager:
+```py
+from async_mcrcon import MinecraftClient
+
 async with MinecraftClient('1.3.3.7', 25575, 'password') as mc:
   output = await mc.send('list')
   print(output)
