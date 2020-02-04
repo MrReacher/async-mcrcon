@@ -20,18 +20,18 @@ class MinecraftClient:
         self.writer = None
 
     async def __aenter__(self):
-        if not self.writer:
+        if not self.auth:
             await self.login()
 
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        if self.writer:
+        if self.auth:
             self.writer.close()
             self.auth = False
 
     def close(self):
-        if self.writer:
+        if self.auth:
             self.writer.close()
             self.auth = False
 
@@ -77,6 +77,9 @@ class MinecraftClient:
                     data += output
 
     async def send(self, command):
+        if not self.auth:
+            raise Exception('You are not logged in.')
+            
         cmd = command.encode('utf8')
 
         self.send_packet(Packet(0, 2, cmd))
