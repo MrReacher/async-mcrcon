@@ -15,7 +15,7 @@ class MinecraftClient:
         self.port = port
         self.password = password
 
-        self.auth = None
+        self.auth = False
         self.reader = None
         self.writer = None
 
@@ -28,10 +28,12 @@ class MinecraftClient:
     async def __aexit__(self, exc_type, exc, tb):
         if self.writer:
             self.writer.close()
+            self.auth = False
 
     def close(self):
         if self.writer:
             self.writer.close()
+            self.auth = False
 
     async def login(self):
         if not self.auth:
